@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<title>Simulación · Módulo SFTP</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4f6fa;color:#1d1d1f;-webkit-tap-highlight-color:transparent}
+  
+  /* Cabecera y controles */
+  header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid #e2e6ee;position:sticky;top:0;z-index:20}
+  header h1{font-size:16px;margin:0 auto 0 0;line-height:1.2}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  button,select{font:inherit;font-size:14px;border-radius:8px;border:1px solid #c9d2e0;padding:8px 12px;background:#fff;cursor:pointer;min-height:38px;color:#1d1d1f;transition:background .15s,border-color .15s}
+  button:active{background:#eef4ff}
+  button.primary{background:#2866c4;border-color:#2866c4;color:#fff;font-weight:500}
+  button.primary:active{background:#1e509e}
+  button:disabled{opacity:.45;cursor:default}
+
+  /* Layout principal Desktop */
+  main{display:grid;grid-template-columns:1fr 22px 320px;column-gap:6px;padding:14px;transition:grid-template-columns .3s ease;max-width:100vw}
+  main.collapsed{grid-template-columns:1fr 22px 0}
+  main.collapsed aside{display:none}
+
+  /* Botón Toggle Desktop */
+  #toggle{align-self:center;width:22px;height:64px;min-height:auto;padding:0;border-radius:6px;background:#fff;border:1px solid #c9d2e0;color:#2866c4;font-size:14px;line-height:1;cursor:pointer;transition:background .2s}
+  #toggle:hover{background:#eef4ff}
+
+  .card{background:#fff;border:1px solid #e2e6ee;border-radius:12px;padding:12px;min-width:0}
+
+  /* Contenedor del diagrama con zoom */
+  .diagram-card{position:relative;padding:8px;overflow:hidden;display:flex;flex-direction:column}
+  .svg-viewport{width:100%;overflow:auto;-webkit-overflow-scrolling:touch;border-radius:8px;background:#fcfdff}
+  .svg-inner{width:100%;transition:width .2s ease;transform-origin:top left}
+  svg{width:100%;height:auto;display:block}
+
+  /* Controles flotantes de zoom */
+  .zoom-bar{position:absolute;bottom:16px;right:16px;display:flex;gap:4px;background:rgba(255,255,255,.92);backdrop-filter:blur(4px);padding:4px;border-radius:10px;border:1px solid #d5dce8;box-shadow:0 2px 8px rgba(0,0,0,.08);z-index:10}
+  .zoom-bar button{min-height:32px;padding:4px 10px;font-size:14px;font-weight:600;border-radius:6px;border:1px solid #e2e6ee}
+
+  /* Estilos SVG */
+  .zone{fill:#f7f9fd;stroke:#2866c4;stroke-dasharray:6 4}
+  .lbl{font-size:12px;fill:#444;text-anchor:middle}
+  .node text{font-size:13px;fill:#1c1c1c;text-anchor:middle;dominant-baseline:middle}
+  .sh{stroke-width:1.6}
+  .node.on .sh{stroke:#2866c4!important;stroke-width:3px;animation:glow .9s ease-in-out infinite alternate}
+  @keyframes glow{from{filter:none}to{filter:drop-shadow(0 0 6px #2866c4)}}
+  .edge{fill:none;stroke:#9aa3b2;stroke-width:1.6;marker-end:url(#ah)}
+  .edge.on{stroke:#2866c4;stroke-width:2.8;marker-end:url(#ahOn)}
+
+  /* Panel lateral / inferior */
+  #info{font-size:14px;line-height:1.45;min-height:62px}
+  #info strong{display:block;font-size:15px;margin-bottom:4px;color:#111}
+  .stats{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:13px;color:#555;margin-top:10px;padding-top:8px;border-top:1px solid #f0f2f6}
+  .bar{height:6px;background:#e2e6ee;border-radius:3px;overflow:hidden;margin-top:10px}
+  .bar i{display:block;height:100%;width:0;background:#2866c4;transition:width .3s}
+  ol{margin:10px 0 0;padding:0;list-style:none;max-height:54vh;overflow-y:auto;scroll-behavior:smooth}
+  ol li{padding:7px 10px;border-radius:6px;font-size:13px;color:#555;margin-bottom:3px}
+  ol li.done{color:#8a94a6}
+  ol li.cur{background:#dbeafe;color:#1d1d1f;font-weight:600}
+  ol li.retry{padding-left:22px}
+
+  /* Adaptación Responsiva para Móviles y Tablets */
+  @media(max-width:900px){
+    header{padding:10px 12px;gap:8px}
+    header h1{width:100%;font-size:15px;margin-bottom:2px}
+    .controls{width:100%;display:grid;grid-template-columns:1fr auto;gap:6px}
+    .controls #mode{grid-column:1 / 2}
+    .controls #speed{grid-column:2 / 3}
+    .btn-group{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:6px}
+    
+    main{grid-template-columns:1fr;row-gap:8px;padding:10px}
+    
+    /* Transformación del botón Toggle para Móvil (UX Barra Horizontal Táctil) */
+    #toggle{
+      width: 100%;
+      height: 40px;
+      border-radius: 8px;
+      background: #f0f4fc;
+      border: 1px solid #cbd5e4;
+      color: #2866c4;
+      font-weight: 600;
+      font-size: 13.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    #toggle:active{background: #e2ecff}
+
+    .svg-viewport{max-height:48vh}
+    ol{max-height:30vh}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Simulación · Módulo SFTP (Azure)</h1>
+  <div class="controls">
+    <select id="mode" aria-label="Modo de simulación">
+      <option value="alt">Alterno (éxito / fallo)</option>
+      <option value="ok">Solo éxito</option>
+      <option value="fail">Solo fallo (5 reintentos)</option>
+    </select>
+    <select id="speed" aria-label="Velocidad">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+    </select>
+    <div class="btn-group">
+      <button id="reset">↺ Reiniciar</button>
+      <button id="step">⏭ Paso</button>
+      <button id="play" class="primary">▶ Play</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="card diagram-card">
+    <div class="svg-viewport" id="viewport">
+      <div class="svg-inner" id="svgInner">
+        <svg id="diagram" viewBox="0 0 1340 1050"></svg>
+      </div>
+    </div>
+    <div class="zoom-bar" aria-label="Controles de zoom">
+      <button id="zoomOut" title="Alejar">−</button>
+      <button id="zoomReset" title="Ajustar">100%</button>
+      <button id="zoomIn" title="Acercar">+</button>
+    </div>
+  </section>
+
+  <!-- Botón de despliegue optimizado para móvil y escritorio -->
+  <button id="toggle" title="Ocultar panel">▼ Ocultar panel de pasos</button>
+
+  <aside class="card">
+    <div id="info"></div>
+    <div class="stats">
+      <span>Paso <b id="cnt">0</b>/<b id="tot">0</b></span>
+      <span>Reintentos: <b id="retries">0</b></span>
+      <span>Ciclos: <b id="cycles">0</b></span>
+    </div>
+    <div class="bar"><i id="prog"></i></div>
+    <ol id="list"></ol>
+  </aside>
+</main>
+
+<script>
+// ---------- Diagrama ----------
+const KIND = {
+  ext:["#ffffff","#555555"], gw:["#f3debe","#c38424"],
+  fn:["#bfd4f2","#2866c4"],  db:["#d9d9d9","#6b7280"], q:["#dbeafe","#2866c4"]
+};
+const N = {
+  ext:    {x:582, y:10,  w:180, h:67, t:["External System"], k:"ext"},
+  gw:     {x:572, y:177, w:198, h:51, t:["AZURE EVENT GRID"], k:"gw"},
+  egih:   {x:101, y:402, w:236, h:60, t:["EventGridImageHandler","(Azure Function)"], k:"fn"},
+  blob:   {x:452, y:390, w:121, h:82, t:["Blob Storage","(sftp-images)"], k:"db"},
+  queue:  {x:732, y:387, w:215, h:92, t:["Azure Queue Storage","(sftp-upload-queue)"], k:"q"},
+  table:  {x:160, y:575, w:120, h:68, t:["Table Storage"], k:"db"},
+  proc:   {x:553, y:570, w:229, h:92, t:["SftpUploadProcessor","(Azure Function)"], k:"fn"},
+  poison: {x:1006,y:570, w:288, h:92, t:["Azure Queue Storage","Poison Queue","(sftp-upload-queue-poison)"], k:"q"},
+  server: {x:605, y:738, w:131, h:99, t:["Server SFTP","de Adobe"], k:"db"},
+  dl:     {x:769, y:859, w:207, h:92, t:["DeadLetterProcessor","(Azure Function)"], k:"fn"},
+  cleanup:{x:24,  y:932, w:236, h:67, t:["CleanupProcessor","(Azure Function)"], k:"fn"}
+};
+
+const E = {
+  e0:"M672 77V177",
+  e1:"M679 228V321H234V402",
+  e2:"M220 462V575",
+  e3:"M288 402V351H851V387",
+  e4:"M678 570V514H851V479",
+  e5:"M670 570V514H513V472",
+  e6:"M672 662V738",
+  e7:"M553 593H282",
+  e8:"M553 620H500V800H605",
+  e9:"M782 616H1006",
+  e10:"M872 859V714H1165V662",
+  e11:"M769 905H206V643",
+  e12:"M149 932V714H185V643"
+};
+const LABELS = [
+  [672,120,"Publish Event"], [220,520,"record status"], [420,588,"record status"],
+  [672,700,"Sent"], [520,735,"Retry 5 times"], [900,612,"5 attempts exhausted"], [400,905,"Dead-letter"]
+];
+
+const svg = document.getElementById('diagram');
+let html = `<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9aa3b2"/></marker>
+  <marker id="ahOn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2866c4"/></marker>
+</defs>
+<rect class="zone" x="10" y="289" width="1320" height="728" rx="6"/>`;
+for (const [id, d] of Object.entries(E)) html += `<path class="edge" id="${id}" d="${d}"/>`;
+for (const [x,y,t] of LABELS) html += `<text class="lbl" x="${x}" y="${y}">${t}</text>`;
+
+function cyl(x,y,w,h){
+  const ry=12, rx=w/2;
+  return `<path class="sh" fill="${KIND.db[0]}" stroke="${KIND.db[1]}" d="M${x} ${y+ry} A${rx} ${ry} 0 0 1 ${x+w} ${y+ry} V${y+h-ry} A${rx} ${ry} 0 0 1 ${x} ${y+h-ry} Z"/>
+          <ellipse class="sh" fill="${KIND.db[0]}" stroke="${KIND.db[1]}" cx="${x+rx}" cy="${y+ry}" rx="${rx}" ry="${ry}"/>`;
+}
+for (const [id, n] of Object.entries(N)) {
+  const [fill, stroke] = KIND[n.k];
+  html += `<g class="node" id="n-${id}">`;
+  html += n.k === "db" ? cyl(n.x, n.y, n.w, n.h)
+        : `<rect class="sh" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="10" fill="${fill}" stroke="${stroke}"/>`;
+  const cy = n.y + n.h/2, lh = 16, y0 = cy - (n.t.length-1)*lh/2;
+  n.t.forEach((t,i) => html += `<text x="${n.x+n.w/2}" y="${y0+i*lh}">${t}</text>`);
+  html += `</g>`;
+}
+html += `<circle id="dot" r="7" fill="#2866c4" opacity="0"/>`;
+svg.innerHTML = html;
+const dot = document.getElementById('dot');
+
+// ---------- Pasos ----------
+const PREFIX = [
+  {l:"1. Evento generado", d:"El sistema externo publica un evento en Azure Event Grid.", n:["ext","gw"], e:["e0"]},
+  {l:"2. Distribución", d:"Event Grid distribuye el evento a EventGridImageHandler.", n:["gw","egih"], e:["e1"]},
+  {l:"3. Registro de estado", d:"EventGridImageHandler registra el estado en Table Storage.", n:["egih","table"], e:["e2"]},
+  {l:"4. Mensaje a la cola", d:"EventGridImageHandler envía un mensaje a sftp-upload-queue.", n:["egih","queue"], e:["e3"]},
+  {l:"5. Atiende el mensaje", d:"SftpUploadProcessor toma el mensaje de sftp-upload-queue.", n:["queue","proc"], e:["e4*"]},
+  {l:"6. Toma la imagen", d:"SftpUploadProcessor toma la imagen de Blob Storage (sftp-images).", n:["proc","blob"], e:["e5*"]},
+];
+const OK = [
+  {l:"7. Envío a SFTP de Adobe", d:"La imagen se envía al Server SFTP de Adobe.", n:["proc","server"], e:["e6"]},
+  {l:"8. Registra estado: Sent", d:"SftpUploadProcessor registra el estado Sent en Table Storage.", n:["proc","table"], e:["e7"]}
+];
+const FAIL = [1,2,3,4,5].map(k => ({
+  l: `7. Error: reintento ${k} de 5`,
+  d: k === 1 ? "Falla el envío al SFTP. Se hace el reintento automático 1." : `Reintento automático ${k} de 5, sin éxito.`,
+  n:["proc","server"], e:["e8"], sh:true, r:k
+})).concat([
+  {l:"8. Registra estado de error", d:"Tras los 5 reintentos, SftpUploadProcessor registra el estado en Table Storage.", n:["proc","table"], e:["e7"]},
+  {l:"9. Envía a Poison Queue", d:"El mensaje pasa a sftp-upload-queue-poison.", n:["proc","poison"], e:["e9"]},
+  {l:"10. DeadLetterProcessor", d:"DeadLetterProcessor toma el mensaje de la Poison Queue y regresa.", n:["poison","dl"], e:["e10*"]},
+  {l:"11. Marca Dead-letter", d:"DeadLetterProcessor marca el estado Dead-letter en Table Storage.", n:["dl","table"], e:["e11"]},
+]);
+const END = [
+  {l:"12. Limpieza", d:"CleanupProcessor limpia los registros de Table Storage.", n:["cleanup","table"], e:["e12"]}
+];
+const ROUTES = {
+  ok:   [...PREFIX, ...OK, ...END],
+  fail: [...PREFIX, ...FAIL, ...END]
+};
+
+// ---------- Estado ----------
+const $ = id => document.getElementById(id);
+const mult = () => Number($('speed').value);
+const wait = ms => new Promise(r => setTimeout(r, ms / mult()));
+let altFail = true, route = ROUTES.ok;
+let idx = 0, playing = false, looping = false, stepping = false;
+let cycles = 0, retries = 0;
+
+function pickRoute() {
+  const m = $('mode').value;
+  if (m === 'ok') return ROUTES.ok;
+  if (m === 'fail') return ROUTES.fail;
+  altFail = !altFail;
+  return altFail ? ROUTES.fail : ROUTES.ok;
+}
+
+function clearOn() { document.querySelectorAll('.on').forEach(e => e.classList.remove('on')); }
+
+function renderList() {
+  $('list').innerHTML = route.map((s, i) =>
+    `<li class="${i < idx-1 ? 'done' : ''} ${i === idx-1 ? 'cur' : ''} ${s.r ? 'retry' : ''}">${s.l}</li>`
+  ).join('');
+  $('tot').textContent = route.length;
+  $('cnt').textContent = Math.max(idx, 0);
+  $('prog').style.width = (idx / route.length * 100) + '%';
+  $('retries').textContent = retries;
+  $('cycles').textContent = cycles;
+
+  const curItem = $('list').querySelector('.cur');
+  if (curItem) {
+    curItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function travel(path, dur, rev = false) {
+  return new Promise(res => {
+    const len = path.getTotalLength(), t0 = performance.now();
+    path.classList.add('on');
+    dot.setAttribute('opacity', 1);
+    const frame = now => {
+      const p = Math.min((now - t0) / dur, 1);
+      const pt = path.getPointAtLength(rev ? len - p * len : p * len);
+      dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+      if (p < 1) requestAnimationFrame(frame);
+      else { dot.setAttribute('opacity', 0); res(); }
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+function shake(g, dur) {
+  return new Promise(res => {
+    const t0 = performance.now();
+    const frame = now => {
+      const p = (now - t0) / dur;
+      if (p >= 1) { g.style.transform = ''; return res(); }
+      g.style.transform = `translateX(${Math.sin(p * Math.PI * 8) * 6}px)`;
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+// ---------- Ejecución ----------
+async function runStep(i) {
+  const s = route[i];
+  clearOn();
+  if (s.r) retries = s.r;
+  s.n.forEach(id => $('n-' + id).classList.add('on'));
+  $('info').innerHTML = `<strong>${s.l}</strong><span>${s.d}</span>`;
+  renderList();
+
+  for (const raw of s.e) {
+    const id = raw.replace(/[~*]/g, '');
+    const dur = 900 / mult();
+    if (raw.endsWith('*')) {
+      await travel($(id), dur, false);
+      await travel($(id), dur, true);
+    } else {
+      await travel($(id), dur, raw.endsWith('~'));
+    }
+  }
+  if (s.sh) await shake($('n-' + s.n[0]), 500 / mult());
+  await wait(300);
+  renderList();
+}
+
+async function advance() {
+  if (idx >= route.length) {
+    await wait(1200);
+    idx = 0; cycles++; retries = 0;
+    route = pickRoute();
+  }
+  const i = idx++;
+  await runStep(i);
+}
+
+async function loop() {
+  if (looping) return;
+  looping = true;
+  while (playing) await advance();
+  looping = false;
+}
+
+function reset() {
+  playing = false;
+  idx = 0; cycles = 0; retries = 0;
+  altFail = true;
+  route = pickRoute();
+  clearOn();
+  dot.setAttribute('opacity', 0);
+  $('play').textContent = '▶ Play';
+  $('step').disabled = false;
+  $('info').innerHTML = `<strong>Listo</strong><span>Pulsa ▶ Play para simular continuamente o ⏭ Paso para avanzar de uno en uno.</span>`;
+  renderList();
+}
+
+// ---------- Controles de Zoom ----------
+let zoom = 100;
+function applyZoom() {
+  $('svgInner').style.width = zoom + '%';
+  $('zoomReset').textContent = zoom + '%';
+}
+$('zoomIn').onclick = () => { zoom = Math.min(zoom + 35, 240); applyZoom(); };
+$('zoomOut').onclick = () => { zoom = Math.max(zoom - 35, 100); applyZoom(); };
+$('zoomReset').onclick = () => { zoom = 100; applyZoom(); };
+
+// ---------- Controles de Simulación ----------
+$('play').onclick = () => {
+  playing = !playing;
+  $('play').textContent = playing ? '⏸ Pausa' : '▶ Play';
+  $('step').disabled = playing;
+  if (playing) loop();
+};
+
+$('step').onclick = async () => {
+  if (playing || stepping) return;
+  stepping = true;
+  $('step').disabled = true;
+  await advance();
+  stepping = false;
+  $('step').disabled = false;
+};
+
+// ---------- Control de Colapso adaptado a Escritorio / Móvil ----------
+$('toggle').onclick = () => {
+  const collapsed = $('main').classList.toggle('collapsed');
+  const isMobile = window.innerWidth <= 900;
+  
+  if (isMobile) {
+    $('toggle').textContent = collapsed ? '▲ Mostrar panel de pasos' : '▼ Ocultar panel de pasos';
+  } else {
+    $('toggle').textContent = collapsed ? '◂' : '▸';
+  }
+  $('toggle').title = collapsed ? 'Mostrar panel' : 'Ocultar panel';
+};
+
+$('reset').onclick = reset;
+$('mode').onchange = reset;
+
+reset();
+</script>
+</body>
+</html>
